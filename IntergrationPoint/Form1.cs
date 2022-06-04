@@ -1,14 +1,13 @@
 ﻿using Bunifu.Framework.UI;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
+using System.Collections.Specialized;
+using System.Configuration;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace IntergrationPoint
@@ -18,6 +17,7 @@ namespace IntergrationPoint
         Bunifu.Framework.UI.BunifuFlatButton previousButton;
         FolderBrowserDialog folderDialog;
         OpenFileDialog fileDialog;
+        SaveFileDialog saveFileDialog;
         double similarityThreshold;
         string datePattern = @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S{3} \[\S{3}.\d{4}.\d{4}\S{1}\]";
         List<ServerLogInfo> serverLogInfos;
@@ -28,6 +28,10 @@ namespace IntergrationPoint
             tabControl1.Size = new Size(tabControl1.Width, tabControl1.Height + 20);
             folderDialog = new FolderBrowserDialog();
             fileDialog = new OpenFileDialog();
+            saveFileDialog = new SaveFileDialog();
+
+            cr_datepicker.Value = DateTime.Now;
+            percentage_txt.Text = (ConfigurationManager.GetSection("LogAnalyserSettings") as NameValueCollection)["DefaultSimilarityPercentage"];
         }
 
         private void menuButton_Click(object sender, EventArgs e)
@@ -74,7 +78,8 @@ namespace IntergrationPoint
         {
             //string[] lines = File.ReadLines(path, Encoding.UTF8);
             //string testCaseName = fileDialog.SafeFileName;
-
+            analyzerProgress.Maximum = File.ReadLines(path_txt.Text).Count();
+            analyzerProgress.Value = 0;
             similarityThreshold = double.Parse(percentage_txt.Text);
 
             serverLogInfos = new List<ServerLogInfo>();
@@ -104,8 +109,10 @@ namespace IntergrationPoint
                 {
                     log += '\n' + line;
                 }
+                analyzerProgress.Value++;
             }
             processLog(log);
+            analyzerProgress.Value++;
 
             displayData();
         }
@@ -128,7 +135,7 @@ namespace IntergrationPoint
                     //{
                     //    dataGrid1.Rows.Add();
                     //    idx++;
-                    //    //dataGrid1.Rows[idx].Cells[5] = new DataGridViewTextBoxCell(); // working
+                    //    dataGrid1.Rows[idx].Cells[5] = new DataGridViewTextBoxCell(); // working
 
                     //}
                     //isFirst = false;
@@ -136,8 +143,8 @@ namespace IntergrationPoint
                     //dataGrid1[3, idx].Value = serviceInfo.name;
                     //dataGrid1[4, idx].Value = serviceInfo.count.ToString();
 
-                    dataGrid1[3, idx].Value = serviceInfo.name + Environment.NewLine;
-                    dataGrid1[4, idx].Value = serviceInfo.count.ToString();
+                    dataGrid1[3, idx].Value += serviceInfo.name + Environment.NewLine;
+                    dataGrid1[4, idx].Value += serviceInfo.count.ToString() + Environment.NewLine;
                 }
                 idx++;
             }
@@ -256,6 +263,45 @@ namespace IntergrationPoint
                     dataGrid2.Rows.Add(log);
                 tabControl1.SelectTab(SimilarLogsTab);
             }
+        }
+
+        private void similarLogTab_close_btn_Click(object sender, EventArgs e)
+        {
+            tabControl1.SelectTab(LogAnalyserTab);
+        }
+
+        private void cr_save_btn_Click(object sender, EventArgs e)
+        {
+            var CRSettings = ConfigurationManager.GetSection("CRSettings") as NameValueCollection;
+            string tempDocPath = Directory.GetCurrentDirectory() + CRSettings["TemplateWordFilePath"];
+
+            saveFileDialog.FileName = Path.GetFileName(tempDocPath).Replace(CRSettings["FilePlaceholder"], title_txt.Text.Trim());
+            saveFileDialog.Title = "Save Document As";
+            saveFileDialog.CheckPathExists = true;
+            saveFileDialog.DefaultExt = "docx";
+            saveFileDialog.Filter = "Word Document (*.docx;*.doc)|*.docx;*.doc";
+            saveFileDialog.RestoreDirectory = true;
+
+            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                wait_lbl.Visible = true;
+                wait_lbl.Text = "Please wait ...";
+                bool isCreated = WordManager.CreateWordDocument(tempDocPath,
+                    saveFileDialog.FileName,
+                    title_txt.Text,
+                    cr_datepicker.Value.ToString(CRSettings["DateFormat"]),
+                    description_txt.Text,
+                    purpose_txt.Text,
+                    currBehavior_txt.Text);
+
+                wait_lbl.Text = "Done!";
+
+                if (isCreated)
+                    MessageBox.Show("File Created Successfully");
+                else
+                    MessageBox.Show("File not Found!");
+            }
+            wait_lbl.Visible = false;
         }
     }
 }
